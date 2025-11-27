@@ -13,6 +13,8 @@ let lowerLegIndexStart = upperLegIndexStart + 6
 let footIndexStart = lowerLegIndexStart + 6
 let endIndex = footIndexStart + 16 * 2 - 2 // This index doesn't exist
 
+playIntro = function () { }
+
 function preload() {
 
 }
