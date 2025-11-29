@@ -13,10 +13,12 @@ let lowerLegIndexStart = upperLegIndexStart + 6
 let footIndexStart = lowerLegIndexStart + 6
 let endIndex = footIndexStart + 16 * 2 - 2 // This index doesn't exist
 
+let bloodImage
+
 playIntro = function () { }
 
 function preload() {
-
+    bloodImage = loadImage("../assets/blood.png")
 }
 
 async function getRandomBodyImage(tone, part) {
@@ -47,7 +49,7 @@ async function getRandomBodyImage(tone, part) {
 }
 
 async function _getRandomBodyImage(tone, indexStart, indexEnd) {
-    return await loadImage(`assets/human/${tone}/${randomInt(indexStart, indexEnd - 1)}.png`)
+    return loadImage(`../assets/human/${tone}/${randomInt(indexStart, indexEnd - 1)}.png`)
 }
 
 async function setup() {
@@ -77,10 +79,44 @@ async function setup() {
 function update() {
     background("rgba(44, 44, 44, 1)")
     body1.group.overlaps(body1.group)
-    body1.group.collide(floor)
-
     body2.group.overlaps(body2.group)
-    body1.group.collide(floor)
+    body1.group.collides(body2.group, (part1, part2) => {
+        if (part1.name !== "arm.hand" && part2.name !== "arm.hand") return
+
+        const contacts = part1.body.getContactList();
+        let speeds = [0]
+
+        for (let c = contacts; c; c = c.next) {
+            if (c.other === part2.body && c.contact.isTouching()) {
+                const speed1 = Math.sqrt(part1.vel.x ** 2 + part1.vel.y ** 2)
+                const speed2 = Math.sqrt(part2.vel.x ** 2 + part2.vel.y ** 2)
+
+                const relSpeed = Math.abs(speed2 - speed1)
+
+                speeds.push(relSpeed)
+            }
+        }
+
+        let highestSpeed = speeds.reduce((p, c, i) => {
+            if (c > p) {
+                return c
+            } else {
+                return p
+            }
+        })
+
+        if (highestSpeed < 3) return
+
+        if (part1.name === "arm.hand") {
+            console.log("1 hit 2 with " + highestSpeed)
+            part2.addBlood()
+        }
+        if (part2.name === "arm.hand") {
+            console.log("2 hit 1 with " + highestSpeed)
+            part1.addBlood()
+        }
+    });
+
 
     if (kb.pressing("space")) {
         body1.group.debug = true
@@ -90,34 +126,13 @@ function update() {
         body2.group.debug = false
     }
 
-    if (kb.pressing("e")) {
-    } else {
-    }
+    onGround(body1)
+    onGround(body2)
 
-    if (mouse.pressing()) {
-        const off = body1.leg1.lower
-        // console.log(mouse.x - off.x, mouse.y - off.y)
-    }
+    flailArms(body1, true)
+    flailArms(body2, false)
 
-    for (const part of body1.group) {
-        if (part.mouse.dragging()) {
-            part.moveTowards(
-                mouse.x + part.mouse.x,
-                mouse.y + part.mouse.y,
-                2
-            );
-        }
-    }
-
-    for (const part of body2.group) {
-        if (part.mouse.dragging()) {
-            part.moveTowards(
-                mouse.x + part.mouse.x,
-                mouse.y + part.mouse.y,
-                2
-            );
-        }
-    }
+    movement()
 }
 
 function randomInt(from, to) {
@@ -191,18 +206,21 @@ async function createBody(isOne) { // Is left
                 lower: await getRandomBodyImage(tone, "leg.lower"),
                 foot: await getRandomBodyImage(tone, "leg.foot")
             }
-        }
+        },
+        currentLeg: null,
+        notCurrentLeg: null
     }
 
     body.group = new Group();
 
     body.torso = new Sprite(body.group)
-    body.torso.x = canvas.w / 2 - 100 * isOne
+    body.torso.x = canvas.w / 2 - 400 * isOne
     body.torso.y = canvas.h / 2 - 30
     body.torso.width = 4
     body.torso.height = 10
     body.torso.image = body.images.torso
     body.torso.layer = 1
+    body.torso.name = "torso"
 
     body.head = new Sprite(body.group)
     body.head.x = body.torso.x - 2 * isOne
@@ -211,6 +229,7 @@ async function createBody(isOne) { // Is left
     body.head.image = body.images.head
     body.head.layer = 2
     body.head.vel.x = 2 * isOne
+    body.head.name = "head"
 
     // Arms
     for (let i = 0; i < 2; i++) {
@@ -223,6 +242,7 @@ async function createBody(isOne) { // Is left
         obj.upper.height = 6
         obj.upper.image = body.images.arm.upper
         obj.upper.layer = 3 - 3 * i
+        obj.upper.name = "arm.upper"
 
         obj.lower = new Sprite(body.group)
         obj.lower.x = obj.upper.x
@@ -231,6 +251,7 @@ async function createBody(isOne) { // Is left
         obj.lower.height = 6
         obj.lower.image = body.images.arm.lower
         obj.lower.layer = 2 - 3 * i
+        obj.lower.name = "arm.lower"
 
         obj.hand = new Sprite(body.group)
         obj.hand.x = obj.lower.x + 2 * isOne
@@ -240,6 +261,7 @@ async function createBody(isOne) { // Is left
         obj.hand.image = body.images.arm.hand
         obj.hand.rotation = 90
         obj.hand.layer = 2 - 3 * i
+        obj.hand.name = "arm.hand"
     }
 
     // Legs
@@ -253,6 +275,7 @@ async function createBody(isOne) { // Is left
         obj.upper.height = 8
         obj.upper.image = body.images.leg.upper
         obj.upper.layer = 1 - 3 * i
+        obj.upper.name = "leg.upper"
 
         obj.lower = new Sprite(body.group)
         obj.lower.x = obj.upper.x
@@ -261,6 +284,7 @@ async function createBody(isOne) { // Is left
         obj.lower.height = 8
         obj.lower.image = body.images.leg.lower
         obj.lower.layer = 0 - 3 * i
+        obj.lower.name = "leg.lower"
 
         obj.foot = new Sprite(body.group)
         obj.foot.x = obj.lower.x + 5.96 * isOne
@@ -271,14 +295,54 @@ async function createBody(isOne) { // Is left
         obj.foot.image = body.images.leg.foot
         obj.foot.image.offset.y = -1
         obj.foot.layer = 0 - 3 * i
+        obj.foot.name = "leg.foot"
     }
+
+    applyTintToSprite(body.torso, shirtColor)
+    applyTintToSprite(body.arm1.upper, shirtColor)
+    applyTintToSprite(body.arm1.lower, shirtColor)
+    applyTintToSprite(body.arm2.upper, shirtColor)
+    applyTintToSprite(body.arm2.lower, shirtColor)
+    applyTintToSprite(body.leg1.upper, pantsColor)
+    applyTintToSprite(body.leg1.lower, pantsColor)
+    applyTintToSprite(body.leg2.upper, pantsColor)
+    applyTintToSprite(body.leg2.lower, pantsColor)
 
 
     for (const part of body.group) {
         part.scale = 5
         part.scale.x *= isOne
+        part.friction = 10
         part.physicsType = DYN
         part.resetMass()
+
+        const draw = part._draw
+        part.draw = function () {
+            draw()
+            push()
+            // image(part.blood.get(), 0, 0, bloodImage.width, bloodImage.height)
+            // blendMode(BLEND);
+            if (part.bloodImage) image(part.bloodImage, 0, 0, part.image.width, part.image.height)
+            pop()
+        }
+
+        part.blood = createGraphics(part.image.width, part.image.height)
+        part.blood.clear()
+        part.addBlood = () => {
+            const size = Math.random() * 2 + 2
+            part.blood.push()
+            part.blood.translate(Math.random() * (part.image.width - size), Math.random() * (part.image.height - size))
+            // part.blood.rotate(Math.random() * 360)
+            part.blood.image(bloodImage, 0, 0, size, size)
+            part.blood.pop()
+            part.bloodImage = part.blood.get()
+            part.image.loadPixels()
+            part.bloodImage.loadPixels()
+            for (let i = 0; i < part.bloodImage.pixels.length; i += 4) {
+                part.bloodImage.pixels[i + 3] = (part.image.pixels[i + 3] === 0 ? 0 : part.bloodImage.pixels[i + 3]) / 2
+            }
+            part.bloodImage.updatePixels()
+        }
     }
 
 
@@ -344,15 +408,8 @@ async function createBody(isOne) { // Is left
         )
     }
 
-    applyTintToSprite(body.torso, shirtColor)
-    applyTintToSprite(body.arm1.upper, shirtColor)
-    applyTintToSprite(body.arm1.lower, shirtColor)
-    applyTintToSprite(body.arm2.upper, shirtColor)
-    applyTintToSprite(body.arm2.lower, shirtColor)
-    applyTintToSprite(body.leg1.upper, pantsColor)
-    applyTintToSprite(body.leg1.lower, pantsColor)
-    applyTintToSprite(body.leg2.upper, pantsColor)
-    applyTintToSprite(body.leg2.lower, pantsColor)
+    body.currentLeg = body.leg1
+    body.notCurrentLeg = body.leg2
 
     return body
 }
@@ -386,4 +443,159 @@ function applyTintToSprite(sprite, color) {
         pop()
     }
     return sprite
+}
+
+function onGround(body) {
+    body.onGround = body.leg1.foot.colliding(floor) || body.leg2.foot.colliding(floor)
+}
+
+function standUp(body) {
+    if (body.ragdoll) return
+    body.torso.applyTorque(-body.torso.rotation * 1)
+
+    const feetX = (body.leg1.foot.x + body.leg2.foot.x) / 2
+    const feetY = (body.leg1.foot.y + body.leg2.foot.y) / 2
+    const torsoFeetDistX = feetX - body.torso.x
+    const torsoFeetDistY = feetY - body.torso.y
+    body.head.applyTorque(-body.head.rotation * 0.25)
+    body.torso.applyForce(torsoFeetDistX * 0.5, 5000 / -torsoFeetDistY)
+
+    body.leg1.foot.applyTorque(-body.leg1.foot.rotation * 0.25)
+    body.leg1.foot.applyForce(0, 10)
+    body.leg2.foot.applyTorque(-body.leg2.foot.rotation * 0.25)
+    body.leg2.foot.applyForce(0, 10)
+}
+
+function movement() {
+    if (kb.pressing("w")) {
+        jump(body1)
+    }
+    if (kb.pressing("a") && !kb.pressing("w")) {
+        move(body1, -1, "a")
+    }
+    if (kb.pressing("d") && !kb.pressing("w")) {
+        move(body1, 1, "d")
+    }
+    if (kb.pressing("s") || kb.released("s")) {
+        leanBack(body1, true, "s")
+    } else {
+        standUp(body1)
+    }
+    if (kb.pressing("e") || kb.released("e")) {
+        punch(body1, true, 1, "e")
+    }
+    if (kb.pressing("q") || kb.released("q")) {
+        punch(body1, true, 2, "q")
+    }
+
+    if (kb.pressing("i")) {
+        jump(body2)
+    }
+    if (kb.pressing("j") && !kb.pressing("i")) {
+        move(body2, -1, "j")
+    }
+    if (kb.pressing("l") && !kb.pressing("i")) {
+        move(body2, 1, "l")
+    }
+    if (kb.pressing("k") || kb.released("k")) {
+        leanBack(body2, false, "k")
+    } else {
+        standUp(body2)
+    }
+    if (kb.pressing("u") || kb.released("u")) {
+        punch(body2, false, 1, "u")
+    }
+    if (kb.pressing("o") || kb.released("o")) {
+        punch(body2, false, 2, "o")
+    }
+}
+
+function jump(body) {
+    if (!body.onGround) return
+    body.torso.applyForce(0, -500)
+}
+
+function move(body, dir, key) {
+    if (kb.presses(key)) {
+        body.currentLeg = body.currentLeg === body.leg1 ? body.leg2 : body.leg1
+        body.notCurrentLeg = body.currentLeg === body.leg1 ? body.leg2 : body.leg1
+        body.torso.applyForce(-500 * dir, 0)
+        body.currentLeg.foot.applyForce(0, -500)
+        body.notCurrentLeg.foot.applyForce(0, 1000)
+    }
+
+    if (!body.onGround) body.currentLeg.foot.applyForce(0, -10)
+    if (!body.onGround) body.notCurrentLeg.foot.applyForce(0, 100)
+
+    if (!body.onGround) return
+
+    const targetX = body.notCurrentLeg.foot.x + 200 * dir
+    body.currentLeg.foot.applyForce((targetX - body.currentLeg.foot.x) * 0.2, 10)
+}
+
+function flailArms(body, isOne) {
+    if (body.onGround) return
+    isOne = isOne ? 1 : -1
+    for (let i = 0; i < 2; i++) {
+        const arm = body["arm" + (i + 1)]
+        const angle = Math.atan2(arm.hand.y - arm.upper.y, arm.hand.x - arm.upper.x)
+        const forceX = Math.cos(angle + Math.PI / 2 * isOne) * -5
+        const forceY = Math.sin(angle + Math.PI / 2 * isOne) * -5
+        arm.hand.applyForce(forceX, forceY)
+    }
+}
+
+function leanBack(body, isOne, key) {
+    isOne = isOne ? 1 : -1
+
+    if (kb.presses(key)) {
+        body.torso.applyTorque(-100 * isOne)
+        body.leg1.foot.applyForce(0, 500)
+        body.leg2.foot.applyForce(0, 500)
+        body.leg1.upper.applyForce(0, 200)
+        body.leg2.upper.applyForce(0, 200)
+    }
+
+    if (kb.released(key)) {
+        setTimeout(() => {
+            body.torso.applyTorque(300 * isOne)
+            body.leg1.foot.applyForce(0, 1000)
+            body.leg2.foot.applyForce(0, 1000)
+            body.leg1.upper.applyForce(0, 500)
+            body.leg2.upper.applyForce(0, 500)
+            body.torso.applyForce(-1000 * isOne, 0)
+        }, 250)
+    }
+
+    body.leg1.foot.applyForce(0, 50)
+    body.leg2.foot.applyForce(0, 50)
+    body.leg1.upper.applyForce(0, 20)
+    body.leg2.upper.applyForce(0, 20)
+    body.torso.applyForce(-100 * isOne, 25)
+}
+
+function punch(body, isOne, armN, key) {
+    isOne = isOne ? 1 : -1
+
+    const arm = body["arm" + armN]
+
+    if (kb.released(key)) {
+        body.torso.applyForce(500 * isOne, 0)
+        arm.hand.applyForce(1000 * isOne, 0)
+        setTimeout(() => {
+            arm.hand.applyForce(500 * isOne, 0)
+        }, 100)
+        setTimeout(() => {
+            arm.hand.applyForce(-arm.hand.vel.x * 50, -arm.hand.vel.y * 50)
+        }, 250)
+    } else {
+        arm.upper.applyForce(-100 * isOne, 0, { x: arm.upper.x - 20, y: arm.upper.y })
+        arm.hand.applyForce(25 * isOne, 0, { x: arm.hand.x + 20, y: arm.hand.y })
+
+        const feetX = (body.leg1.foot.x + body.leg2.foot.x) / 2
+        const torsoFeetDistX = feetX - body.torso.x
+        body.torso.applyForce(torsoFeetDistX * 2, 0)
+        body.leg1.foot.applyForce(0, 20)
+        body.leg2.foot.applyForce(0, 20)
+    }
 }
